@@ -19,6 +19,7 @@ package io.cassandrareaper.storage;
 
 import io.cassandrareaper.ReaperException;
 import io.cassandrareaper.core.Cluster;
+import io.cassandrareaper.core.DiagEventSubscription;
 import io.cassandrareaper.core.RepairRun;
 import io.cassandrareaper.core.RepairSchedule;
 import io.cassandrareaper.core.RepairSegment;
@@ -144,4 +145,13 @@ public interface IStorage {
 
   Snapshot getSnapshot(String clusterName, String snapshotName);
 
+  Collection<DiagEventSubscription> getEventSubscriptions();
+
+  Collection<DiagEventSubscription> getEventSubscriptions(String clusterName);
+
+  DiagEventSubscription getEventSubscription(UUID id);
+
+  DiagEventSubscription addEventSubscription(DiagEventSubscription subscription);
+
+  boolean deleteEventSubscription(UUID id);
 }

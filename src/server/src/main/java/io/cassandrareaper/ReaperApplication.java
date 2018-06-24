@@ -22,6 +22,8 @@ import io.cassandrareaper.ReaperApplicationConfiguration.JmxCredentials;
 import io.cassandrareaper.jmx.JmxConnectionFactory;
 import io.cassandrareaper.jmx.JmxConnectionsInitializer;
 import io.cassandrareaper.resources.ClusterResource;
+import io.cassandrareaper.resources.DiagEventSseResource;
+import io.cassandrareaper.resources.DiagEventSubscriptionResource;
 import io.cassandrareaper.resources.NodeStatsResource;
 import io.cassandrareaper.resources.PingResource;
 import io.cassandrareaper.resources.ReaperHealthCheck;
@@ -58,15 +60,19 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import io.dropwizard.Application;
 import io.dropwizard.assets.AssetsBundle;
+import io.dropwizard.client.HttpClientBuilder;
 import io.dropwizard.configuration.EnvironmentVariableSubstitutor;
 import io.dropwizard.configuration.SubstitutingSourceProvider;
 import io.dropwizard.db.DataSourceFactory;
 import io.dropwizard.jdbi.DBIFactory;
+import io.dropwizard.jetty.BiDiGzipHandler;
 import io.dropwizard.setup.Bootstrap;
 import io.dropwizard.setup.Environment;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.dropwizard.DropwizardExports;
 import io.prometheus.client.exporter.MetricsServlet;
+import org.apache.http.client.HttpClient;
+import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.session.SessionHandler;
 import org.eclipse.jetty.servlets.CrossOriginFilter;
 import org.flywaydb.core.Flyway;
@@ -144,12 +150,9 @@ public final class ReaperApplication extends Application<ReaperApplicationConfig
   public void run(ReaperApplicationConfiguration config, Environment environment) throws Exception {
     // Using UTC times everywhere as default. Affects only Yoda time.
     DateTimeZone.setDefault(DateTimeZone.UTC);
-
     checkConfiguration(config);
     context.config = config;
-
     addSignalHandlers(); // SIGHUP, etc.
-
     context.metricRegistry = environment.metrics();
     CollectorRegistry.defaultRegistry.register(new DropwizardExports(environment.metrics()));
 
@@ -204,16 +207,7 @@ public final class ReaperApplication extends Application<ReaperApplicationConfig
       context.jmxConnectionFactory.setJmxCredentials(jmxCredentials);
     }
 
-    // Enable cross-origin requests for using external GUI applications.
-    if (config.isEnableCrossOrigin() || System.getProperty("enableCrossOrigin") != null) {
-      final FilterRegistration.Dynamic cors
-          = environment.servlets().addFilter("crossOriginRequests", CrossOriginFilter.class);
-      cors.setInitParameter("allowedOrigins", "*");
-      cors.setInitParameter("allowedHeaders", "X-Requested-With,Content-Type,Accept,Origin");
-      cors.setInitParameter("allowedMethods", "OPTIONS,GET,PUT,POST,DELETE,HEAD");
-      cors.addMappingForUrlPatterns(EnumSet.allOf(DispatcherType.class), true, "/*");
-    }
-
+    setupSse(environment);
     LOG.info("creating and registering health checks");
     // Notice that health checks are registered under the admin application on /healthcheck
     final ReaperHealthCheck healthCheck = new ReaperHealthCheck(context);
@@ -237,6 +231,21 @@ public final class ReaperApplication extends Application<ReaperApplicationConfig
 
     final NodeStatsResource nodeStatsResource = new NodeStatsResource(context);
     environment.jersey().register(nodeStatsResource);
+
+    HttpClient httpClient = createHttpClient(config, environment);
+    final DiagEventSubscriptionResource eventsResource = new DiagEventSubscriptionResource(context, httpClient);
+    environment.jersey().register(eventsResource);
+    final DiagEventSseResource diagEvents = new DiagEventSseResource(context, httpClient);
+    environment.jersey().register(diagEvents);
+
+    // Enable cross-origin requests for using external GUI applications.
+    if (config.isEnableCrossOrigin() || System.getProperty("enableCrossOrigin") != null) {
+      FilterRegistration.Dynamic co = environment.servlets().addFilter("crossOriginRequests", CrossOriginFilter.class);
+      co.setInitParameter("allowedOrigins", "*");
+      co.setInitParameter("allowedHeaders", "X-Requested-With,Content-Type,Accept,Origin");
+      co.setInitParameter("allowedMethods", "OPTIONS,GET,PUT,POST,DELETE,HEAD");
+      co.addMappingForUrlPatterns(EnumSet.allOf(DispatcherType.class), true, "/*");
+    }
 
     if (config.isAccessControlEnabled()) {
       SessionHandler sessionHandler = new SessionHandler();
@@ -281,11 +290,23 @@ public final class ReaperApplication extends Application<ReaperApplicationConfig
     }
 
     schedulePurge(scheduler);
-
     LOG.info("Initialization complete!");
     LOG.warn("Reaper is ready to get things done!");
   }
 
+
+  private void setupSse(Environment environment) {
+    // Enabling gzip buffering will prevent flushing of server-side-events, so we disable compression for SSE
+    environment.lifecycle().addServerLifecycleListener(server -> {
+      for (Handler handler : server.getChildHandlersByClass(BiDiGzipHandler.class)) {
+        ((BiDiGzipHandler) handler).addExcludedMimeTypes("text/event-stream");
+      }
+    });
+  }
+
+  private HttpClient createHttpClient(ReaperApplicationConfiguration config, Environment environment) {
+    return new HttpClientBuilder(environment).using(config.getHttpClientConfiguration()).build(getName());
+  }
 
   private void scheduleRepairManager(ScheduledExecutorService scheduler) {
     scheduler.scheduleWithFixedDelay(
