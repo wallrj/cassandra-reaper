@@ -47,6 +47,7 @@ import java.math.BigInteger;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedSet;
@@ -175,6 +176,10 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
   private PreparedStatement getSnapshotPrepStmt;
   private PreparedStatement deleteSnapshotPrepStmt;
   private PreparedStatement saveSnapshotPrepStmt;
+  private PreparedStatement getDiagnosticEventsPrepStmt;
+  private PreparedStatement getDiagnosticEventPrepStmt;
+  private PreparedStatement deleteDiagnosticEventPrepStmt;
+  private PreparedStatement saveDiagnosticEventPrepStmt;
 
   public CassandraStorage(ReaperApplicationConfiguration config, Environment environment) throws ReaperException {
     CassandraFactory cassandraFactory = config.getCassandraFactory();
@@ -367,6 +372,14 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
     saveSnapshotPrepStmt = session.prepare(
             "INSERT INTO snapshot (cluster, snapshot_name, owner, cause, creation_time)"
                 + " VALUES(?,?,?,?,?)");
+
+    getDiagnosticEventsPrepStmt = session.prepare("SELECT * FROM diagnostic_event_subscription");
+    getDiagnosticEventPrepStmt = session.prepare("SELECT * FROM diagnostic_event_subscription WHERE id = ?");
+    deleteDiagnosticEventPrepStmt = session.prepare("DELETE FROM diagnostic_event_subscription WHERE id = ?");
+
+    saveDiagnosticEventPrepStmt = session.prepare("INSERT INTO diagnostic_event_subscription "
+        + "(id,cluster,description,include_nodes,events,export_sse,export_file_logger,export_http_endpoint)"
+        + " VALUES(?,?,?,?,?,?,?,?)");
 
     if (0 >= VersionNumber.parse("3.0").compareTo(version)) {
       try {
@@ -1401,75 +1414,6 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
     return !range.isPresent() || segmentIsWithinRange(segment, range.get());
   }
 
-  /**
-   * Retry all statements.
-   *
-   * <p>
-   * All reaper statements are idempotent. Reaper generates few read and writes requests, so it's ok to keep
-   * retrying.
-   *
-   * <p>
-   * Sleep 100 milliseconds in between subsequent read retries. Fail after the tenth read retry.
-   *
-   * <p>
-   * Writes keep retrying forever.
-   */
-  private static class RetryPolicyImpl implements RetryPolicy {
-
-    @Override
-    public RetryDecision onReadTimeout(
-        Statement stmt,
-        ConsistencyLevel cl,
-        int required,
-        int received,
-        boolean retrieved,
-        int retry) {
-
-      if (retry > 1) {
-        try {
-          Thread.sleep(100);
-        } catch (InterruptedException expected) { }
-      }
-      return null != stmt && Boolean.FALSE != stmt.isIdempotent()
-          ? retry < 10 ? RetryDecision.retry(cl) : RetryDecision.rethrow()
-          : DefaultRetryPolicy.INSTANCE.onReadTimeout(stmt, cl, required, received, retrieved, retry);
-    }
-
-    @Override
-    public RetryDecision onWriteTimeout(
-        Statement stmt,
-        ConsistencyLevel cl,
-        WriteType type,
-        int required,
-        int received,
-        int retry) {
-
-      Preconditions.checkState(WriteType.CAS != type ||  ConsistencyLevel.SERIAL == cl);
-
-      return null != stmt && Boolean.FALSE != stmt.isIdempotent()
-          ? WriteType.CAS == type ? RetryDecision.retry(ConsistencyLevel.ONE) : RetryDecision.retry(cl)
-          : DefaultRetryPolicy.INSTANCE.onWriteTimeout(stmt, cl, type, required, received, retry);
-    }
-
-    @Override
-    public RetryDecision onUnavailable(Statement stmt, ConsistencyLevel cl, int required, int aliveReplica, int retry) {
-      return DefaultRetryPolicy.INSTANCE.onUnavailable(stmt, cl, required, aliveReplica, retry == 1 ? 0 : retry);
-    }
-
-    @Override
-    public RetryDecision onRequestError(Statement stmt, ConsistencyLevel cl, DriverException ex, int nbRetry) {
-      return DefaultRetryPolicy.INSTANCE.onRequestError(stmt, cl, ex, nbRetry);
-    }
-
-    @Override
-    public void init(com.datastax.driver.core.Cluster cluster) {
-    }
-
-    @Override
-    public void close() {
-    }
-  }
-
   @Override
   public boolean saveSnapshot(Snapshot snapshot) {
     session.execute(
@@ -1506,32 +1450,124 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
 
   @Override
   public Collection<DiagEventSubscription> getEventSubscriptions() {
-    // TODO
-    return null;
+    return session.execute(getDiagnosticEventsPrepStmt.bind()).all().stream()
+        .map((row) -> createDiagEventSubscription(row))
+        .collect(Collectors.toList());
   }
 
   @Override
   public Collection<DiagEventSubscription> getEventSubscriptions(String clusterName) {
-    // TODO
-    return null;
+    return session.execute(getDiagnosticEventsPrepStmt.bind()).all().stream()
+        .map((row) -> createDiagEventSubscription(row))
+        .filter((subscription) -> clusterName.equals(subscription.getCluster()))
+        .collect(Collectors.toList());
   }
 
   @Override
   public DiagEventSubscription getEventSubscription(UUID id) {
-    // TODO
-    return null;
+    return createDiagEventSubscription(session.execute(getDiagnosticEventPrepStmt.bind(id)).one());
+  }
+
+  private static DiagEventSubscription createDiagEventSubscription(Row row) {
+    return new DiagEventSubscription(
+        Optional.of(row.getUUID("id")),
+        row.getString("cluster"),
+        Optional.of(row.getString("description")),
+        row.getList("include_nodes", String.class),
+        row.getList("events", String.class),
+        row.getBool("export_sse"),
+        row.getString("export_file_logger"),
+        row.getString("export_http_endpoint"));
   }
 
   @Override
   public DiagEventSubscription addEventSubscription(DiagEventSubscription subscription) {
-    // TODO
+    session.execute(saveDiagnosticEventPrepStmt.bind(
+        subscription.getId(),
+        subscription.getCluster(),
+        subscription.getDescription(),
+        subscription.getIncludeNodes(),
+        subscription.getEvents(),
+        subscription.getExportSse(),
+        subscription.getExportFileLogger(),
+        subscription.getExportHttpEndpoint()));
+
     return subscription;
   }
 
   @Override
   public boolean deleteEventSubscription(UUID id) {
-    // TODO
+    session.executeAsync(deleteDiagnosticEventPrepStmt.bind(id));
     return false;
   }
 
+
+  /**
+   * Retry all statements.
+   *
+   * <p>
+   * All reaper statements are idempotent. Reaper generates few read and writes requests, so it's ok to keep
+   * retrying.
+   *
+   * <p>
+   * Sleep 100 milliseconds in between subsequent read retries. Fail after the tenth read retry.
+   *
+   * <p>
+   * Writes keep retrying forever.
+   */
+  private static class RetryPolicyImpl implements RetryPolicy {
+
+    @Override
+    public RetryDecision onReadTimeout(
+        Statement stmt,
+        ConsistencyLevel cl,
+        int required,
+        int received,
+        boolean retrieved,
+        int retry) {
+
+      if (retry > 1) {
+        try {
+          Thread.sleep(100);
+        } catch (InterruptedException expected) { }
+      }
+      return null != stmt && !Objects.equals(Boolean.FALSE, stmt.isIdempotent())
+          ? retry < 10 ? RetryDecision.retry(cl) : RetryDecision.rethrow()
+          : DefaultRetryPolicy.INSTANCE.onReadTimeout(stmt, cl, required, received, retrieved, retry);
+    }
+
+    @Override
+    public RetryDecision onWriteTimeout(
+        Statement stmt,
+        ConsistencyLevel cl,
+        WriteType type,
+        int required,
+        int received,
+        int retry) {
+
+      Preconditions.checkState(WriteType.CAS != type ||  ConsistencyLevel.SERIAL == cl);
+
+      return null != stmt && !Objects.equals(Boolean.FALSE, stmt.isIdempotent())
+          ? WriteType.CAS == type ? RetryDecision.retry(ConsistencyLevel.ONE) : RetryDecision.retry(cl)
+          : DefaultRetryPolicy.INSTANCE.onWriteTimeout(stmt, cl, type, required, received, retry);
+    }
+
+    @Override
+    public RetryDecision onUnavailable(Statement stmt, ConsistencyLevel cl, int required, int aliveReplica, int retry) {
+      return DefaultRetryPolicy.INSTANCE.onUnavailable(stmt, cl, required, aliveReplica, retry == 1 ? 0 : retry);
+    }
+
+    @Override
+    public RetryDecision onRequestError(Statement stmt, ConsistencyLevel cl, DriverException ex, int nbRetry) {
+      return DefaultRetryPolicy.INSTANCE.onRequestError(stmt, cl, ex, nbRetry);
+    }
+
+    @Override
+    public void init(com.datastax.driver.core.Cluster cluster) {
+    }
+
+    @Override
+    public void close() {
+    }
+  }
 }
