@@ -207,6 +207,15 @@ public final class ReaperApplication extends Application<ReaperApplicationConfig
       context.jmxConnectionFactory.setJmxCredentials(jmxCredentials);
     }
 
+    // Enable cross-origin requests for using external GUI applications.
+    if (config.isEnableCrossOrigin() || System.getProperty("enableCrossOrigin") != null) {
+      FilterRegistration.Dynamic co = environment.servlets().addFilter("crossOriginRequests", CrossOriginFilter.class);
+      co.setInitParameter("allowedOrigins", "*");
+      co.setInitParameter("allowedHeaders", "X-Requested-With,Content-Type,Accept,Origin");
+      co.setInitParameter("allowedMethods", "OPTIONS,GET,PUT,POST,DELETE,HEAD");
+      co.addMappingForUrlPatterns(EnumSet.allOf(DispatcherType.class), true, "/*");
+    }
+
     setupSse(environment);
     LOG.info("creating and registering health checks");
     // Notice that health checks are registered under the admin application on /healthcheck
@@ -237,15 +246,6 @@ public final class ReaperApplication extends Application<ReaperApplicationConfig
     environment.jersey().register(eventsResource);
     final DiagEventSseResource diagEvents = new DiagEventSseResource(context, httpClient);
     environment.jersey().register(diagEvents);
-
-    // Enable cross-origin requests for using external GUI applications.
-    if (config.isEnableCrossOrigin() || System.getProperty("enableCrossOrigin") != null) {
-      FilterRegistration.Dynamic co = environment.servlets().addFilter("crossOriginRequests", CrossOriginFilter.class);
-      co.setInitParameter("allowedOrigins", "*");
-      co.setInitParameter("allowedHeaders", "X-Requested-With,Content-Type,Accept,Origin");
-      co.setInitParameter("allowedMethods", "OPTIONS,GET,PUT,POST,DELETE,HEAD");
-      co.addMappingForUrlPatterns(EnumSet.allOf(DispatcherType.class), true, "/*");
-    }
 
     if (config.isAccessControlEnabled()) {
       SessionHandler sessionHandler = new SessionHandler();
