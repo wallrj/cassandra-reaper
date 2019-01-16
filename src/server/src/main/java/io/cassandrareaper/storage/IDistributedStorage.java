@@ -37,10 +37,6 @@ public interface IDistributedStorage {
 
   boolean renewLead(UUID leaderId);
 
-  boolean takeLead(UUID leaderId, int ttl);
-
-  boolean renewLead(UUID leaderId, int ttl);
-
   List<UUID> getLeaders();
 
   void releaseLead(UUID leaderId);

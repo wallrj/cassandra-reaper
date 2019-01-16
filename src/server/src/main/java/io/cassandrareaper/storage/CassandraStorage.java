@@ -854,6 +854,9 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
               segment.getRunId(),
               segment.getId(),
               segment.hasEndTime() ? segment.getEndTime().toDate() : null));
+
+    } else if (State.STARTED == segment.getState()) {
+      updateRepairSegmentBatch.setConsistencyLevel(ConsistencyLevel.EACH_QUORUM);
     }
     session.execute(updateRepairSegmentBatch);
     return true;
@@ -958,12 +961,15 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
   public Collection<RepairSegment> getSegmentsWithState(UUID runId, State segmentState) {
     Collection<RepairSegment> segments = Lists.newArrayList();
 
-    ResultSet segmentsIdResultSet = null != getRepairSegmentsByRunIdAndStatePrepStmt
-        ? session.execute(getRepairSegmentsByRunIdAndStatePrepStmt.bind(runId, segmentState.ordinal()))
+    Statement statement = null != getRepairSegmentsByRunIdAndStatePrepStmt
+        ? getRepairSegmentsByRunIdAndStatePrepStmt.bind(runId, segmentState.ordinal())
         // legacy mode for Cassandra-2 backends
-        : session.execute(getRepairSegmentsByRunIdPrepStmt.bind(runId));
+        : getRepairSegmentsByRunIdPrepStmt.bind(runId);
 
-    for (Row segmentRow : segmentsIdResultSet) {
+    if (State.STARTED == segmentState) {
+      statement = statement.setConsistencyLevel(ConsistencyLevel.LOCAL_QUORUM);
+    }
+    for (Row segmentRow : session.execute(statement)) {
       if (segmentRow.getInt("segment_state") == segmentState.ordinal()) {
         segments.add(createRepairSegmentFromRow(segmentRow));
       }
@@ -1233,16 +1239,6 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
 
   @Override
   public boolean takeLead(UUID leaderId) {
-    return takeLead(leaderId, LEAD_DURATION);
-  }
-
-  @Override
-  public boolean renewLead(UUID leaderId) {
-    return renewLead(leaderId, LEAD_DURATION);
-  }
-
-  @Override
-  public boolean takeLead(UUID leaderId, int ttl) {
     LOG.debug("Trying to take lead on segment {}", leaderId);
     ResultSet lwtResult = session.execute(
         takeLeadPrepStmt.bind(leaderId, AppContext.REAPER_INSTANCE_ID, AppContext.REAPER_INSTANCE_ADDRESS));
@@ -1258,7 +1254,7 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
   }
 
   @Override
-  public boolean renewLead(UUID leaderId, int ttl) {
+  public boolean renewLead(UUID leaderId) {
     ResultSet lwtResult = session.execute(
         renewLeadPrepStmt.bind(
             AppContext.REAPER_INSTANCE_ID,
