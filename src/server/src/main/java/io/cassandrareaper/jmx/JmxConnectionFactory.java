@@ -24,6 +24,7 @@ import io.cassandrareaper.core.Cluster;
 import io.cassandrareaper.core.Node;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -155,16 +156,20 @@ public class JmxConnectionFactory {
   }
 
   public JmxProxy connectAny(Cluster cluster) throws ReaperException {
-    Set<Node> nodes = cluster
-            .getSeedHosts()
-            .stream()
-            .map(host -> Node.builder().withCluster(cluster).withHostname(host).build())
-            .collect(Collectors.toSet());
+    if (context.config.isInSidecarMode()) {
+      return connectAny(Arrays.asList(Node.builder().withCluster(cluster).withHostname(LOCALHOST).build()));
+    } else {
+      Set<Node> nodes = cluster
+              .getSeedHosts()
+              .stream()
+              .map(host -> Node.builder().withCluster(cluster).withHostname(host).build())
+              .collect(Collectors.toSet());
 
-    if (nodes == null || nodes.isEmpty()) {
-      throw new ReaperException("no seeds in cluster with name: " + cluster.getName());
+      if (nodes == null || nodes.isEmpty()) {
+        throw new ReaperException("no seeds in cluster with name: " + cluster.getName());
+      }
+      return connectAny(nodes);
     }
-    return connectAny(nodes);
   }
 
   public final void setJmxAuth(JmxCredentials jmxAuth) {

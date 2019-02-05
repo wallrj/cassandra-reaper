@@ -449,18 +449,6 @@ public final class ClusterResource {
     return Optional.empty();
   }
 
-  private JmxProxy connectAny(Collection<String> seedHosts, String clusterName)
-      throws ReaperException {
-    Cluster cluster = context.storage.getCluster(clusterName).get();
-    return context.jmxConnectionFactory.connectAny(
-        seedHosts
-            .stream()
-            .map(
-                host ->
-                    Node.builder().withCluster(cluster).withHostname(parseSeedHost(host)).build())
-            .collect(Collectors.toList()));
-  }
-
   private JmxProxy connectAny(Collection<String> seedHosts, Cluster cluster)
       throws ReaperException {
     return context.jmxConnectionFactory.connectAny(
