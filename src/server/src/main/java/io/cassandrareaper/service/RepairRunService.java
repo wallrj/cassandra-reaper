@@ -20,12 +20,10 @@ package io.cassandrareaper.service;
 import io.cassandrareaper.AppContext;
 import io.cassandrareaper.ReaperException;
 import io.cassandrareaper.core.Cluster;
-import io.cassandrareaper.core.Node;
 import io.cassandrareaper.core.RepairRun;
 import io.cassandrareaper.core.RepairSegment;
 import io.cassandrareaper.core.RepairUnit;
 import io.cassandrareaper.core.Segment;
-import io.cassandrareaper.jmx.JmxProxy;
 
 import java.math.BigInteger;
 import java.util.Arrays;
@@ -143,27 +141,19 @@ public final class RepairRunService {
         "no partitioner for cluster: " + targetCluster.getName());
 
     SegmentGenerator sg = new SegmentGenerator(targetCluster.getPartitioner().get());
-    Set<String> seedHosts = targetCluster.getSeedHosts();
-    if (seedHosts.isEmpty()) {
+    if (targetCluster.getSeedHosts().isEmpty()) {
       String errMsg = String.format("didn't get any seed hosts for cluster \"%s\"", targetCluster.getName());
       LOG.error(errMsg);
       throw new ReaperException(errMsg);
     }
 
     try {
-      Cluster cluster = context.storage.getCluster(targetCluster.getName()).get();
-      JmxProxy jmxProxy
-          = context.jmxConnectionFactory.connectAny(
-              seedHosts
-                  .stream()
-                  .map(host -> Node.builder().withCluster(cluster).withHostname(host).build())
-                  .collect(Collectors.toList()));
-
-      List<BigInteger> tokens = jmxProxy.getTokens();
-      Map<List<String>, List<String>> rangeToEndpoint = jmxProxy.getRangeToEndpointMap(repairUnit.getKeyspaceName());
+      List<BigInteger> tokens = context.clusterProxy.getTokens(targetCluster);
+      Map<List<String>, List<String>> rangeToEndpoint
+          = context.clusterProxy.getRangeToEndpointMap(targetCluster, repairUnit.getKeyspaceName());
       Map<String, List<RingRange>> endpointToRange = buildEndpointToRangeMap(rangeToEndpoint);
       Map<List<String>, List<RingRange>> replicasToRange = buildReplicasToRangeMap(rangeToEndpoint);
-      String cassandraVersion = jmxProxy.getCassandraVersion();
+      String cassandraVersion = context.clusterProxy.getCassandraVersion(targetCluster);
 
       int globalSegmentCount = segmentCount;
       if (globalSegmentCount == 0) {
@@ -181,7 +171,7 @@ public final class RepairRunService {
               endpointToRange);
 
     } catch (ReaperException e) {
-      LOG.warn("couldn't connect to any host: {}, life sucks...", seedHosts, e);
+      LOG.warn("couldn't connect to any host: {}, life sucks...", targetCluster.getSeedHosts(), e);
     }
 
     if (segments.isEmpty() && !repairUnit.getIncrementalRepair()) {
@@ -305,8 +295,7 @@ public final class RepairRunService {
   private Map<String,RingRange> getClusterNodes(Cluster targetCluster, RepairUnit repairUnit) throws ReaperException {
 
     ConcurrentHashMap<String, RingRange> nodesWithRanges = new ConcurrentHashMap<>();
-    Set<String> seedHosts = targetCluster.getSeedHosts();
-    if (seedHosts.isEmpty()) {
+    if (targetCluster.getSeedHosts().isEmpty()) {
       String errMsg = String.format("didn't get any seed hosts for cluster \"%s\"", targetCluster.getName());
       LOG.error(errMsg);
       throw new ReaperException(errMsg);
@@ -315,13 +304,7 @@ public final class RepairRunService {
     Map<List<String>, List<String>> rangeToEndpoint = Maps.newHashMap();
 
     try {
-      JmxProxy jmxProxy = context.jmxConnectionFactory.connectAny(
-              seedHosts
-                  .stream()
-                  .map(host -> Node.builder().withCluster(targetCluster).withHostname(host).build())
-                  .collect(Collectors.toList()));
-
-      rangeToEndpoint = jmxProxy.getRangeToEndpointMap(repairUnit.getKeyspaceName());
+      rangeToEndpoint = context.clusterProxy.getRangeToEndpointMap(targetCluster, repairUnit.getKeyspaceName());
     } catch (ReaperException e) {
       LOG.error("couldn't connect to any host: {}, will try next one", e);
       throw new ReaperException(e);
@@ -343,9 +326,7 @@ public final class RepairRunService {
 
     Set<String> knownTables;
 
-    JmxProxy jmxProxy = context.jmxConnectionFactory.connectAny(cluster);
-
-    knownTables = jmxProxy.getTableNamesForKeyspace(keyspace);
+    knownTables = context.clusterProxy.getTableNamesForKeyspace(cluster, keyspace);
     if (knownTables.isEmpty()) {
       LOG.debug("no known tables for keyspace {} in cluster {}", keyspace, cluster.getName());
       throw new IllegalArgumentException("no column families found for keyspace");
@@ -369,9 +350,7 @@ public final class RepairRunService {
 
     Set<String> nodesInCluster;
 
-    JmxProxy jmxProxy = context.jmxConnectionFactory.connectAny(cluster);
-
-    nodesInCluster = jmxProxy.getEndpointToHostId().keySet();
+    nodesInCluster = context.clusterProxy.getEndpointToHostId(cluster).keySet();
     if (nodesInCluster.isEmpty()) {
       LOG.debug("no nodes found in cluster {}", cluster.getName());
       throw new IllegalArgumentException("no nodes found in cluster");

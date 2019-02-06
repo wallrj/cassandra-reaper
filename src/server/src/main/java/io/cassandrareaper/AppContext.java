@@ -17,6 +17,7 @@
 
 package io.cassandrareaper;
 
+import io.cassandrareaper.jmx.ClusterProxy;
 import io.cassandrareaper.jmx.JmxConnectionFactory;
 import io.cassandrareaper.service.RepairManager;
 import io.cassandrareaper.storage.IStorage;
@@ -50,6 +51,7 @@ public final class AppContext {
   public String localNodeAddress;
   public String localClusterName;
   public String localDatacenter;
+  public ClusterProxy clusterProxy;
 
   private static String initialiseInstanceAddress() {
     String reaperInstanceAddress;

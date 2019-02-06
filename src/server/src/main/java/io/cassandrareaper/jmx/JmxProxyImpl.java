@@ -19,7 +19,6 @@ package io.cassandrareaper.jmx;
 
 import io.cassandrareaper.ReaperException;
 import io.cassandrareaper.core.Cluster;
-import io.cassandrareaper.core.Segment;
 import io.cassandrareaper.service.RingRange;
 
 import java.io.IOException;
@@ -295,33 +294,6 @@ final class JmxProxyImpl implements JmxProxy {
     }
   }
 
-  @Override
-  public List<RingRange> getRangesForLocalEndpoint(String keyspace) throws ReaperException {
-    Preconditions.checkNotNull(ssProxy, "Looks like the proxy is not connected");
-    List<RingRange> localRanges = Lists.newArrayList();
-    try {
-      Map<List<String>, List<String>> ranges = ssProxy.getRangeToEndpointMap(keyspace);
-      String localEndpoint = getLocalEndpoint();
-      // Filtering ranges for which the local node is a replica
-      // For local mode
-      ranges
-          .entrySet()
-          .stream()
-          .forEach(entry -> {
-            if (entry.getValue().contains(localEndpoint)) {
-              localRanges.add(
-                  new RingRange(new BigInteger(entry.getKey().get(0)), new BigInteger(entry.getKey().get(1))));
-            }
-          });
-
-      LOG.info("LOCAL RANGES {}", localRanges);
-      return localRanges;
-    } catch (RuntimeException e) {
-      LOG.error(e.getMessage());
-      throw new ReaperException(e.getMessage(), e);
-    }
-  }
-
   @NotNull
   @Override
   public String getLocalEndpoint() throws ReaperException {
@@ -334,29 +306,6 @@ final class JmxProxyImpl implements JmxProxy {
       String localHostId = ssProxy.getLocalHostId();
       return hostIdBiMap.inverse().get(localHostId);
     }
-  }
-
-  @NotNull
-  @Override
-  public List<String> tokenRangeToEndpoint(String keyspace, Segment segment) {
-    Preconditions.checkNotNull(ssProxy, "Looks like the proxy is not connected");
-
-    Set<Map.Entry<List<String>, List<String>>> entries = ssProxy.getRangeToEndpointMap(keyspace).entrySet();
-
-    for (Map.Entry<List<String>, List<String>> entry : entries) {
-      BigInteger rangeStart = new BigInteger(entry.getKey().get(0));
-      BigInteger rangeEnd = new BigInteger(entry.getKey().get(1));
-      if (new RingRange(rangeStart, rangeEnd).encloses(segment.getTokenRanges().get(0))) {
-        LOG.debug(
-            "[tokenRangeToEndpoint] Found replicas for token range {} : {}",
-            segment.getTokenRanges().get(0),
-            entry.getValue());
-        return entry.getValue();
-      }
-    }
-    LOG.error("[tokenRangeToEndpoint] no replicas found for token range {}", segment);
-    LOG.debug("[tokenRangeToEndpoint] checked token ranges were {}", entries);
-    return Lists.newArrayList();
   }
 
   @NotNull

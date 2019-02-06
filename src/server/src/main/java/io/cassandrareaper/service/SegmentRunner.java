@@ -228,16 +228,7 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
     try (Timer.Context cxt = context.metricRegistry.timer(metricNameForRunRepair(segment)).time()) {
       Cluster cluster = context.storage.getCluster(clusterName).get();
       JmxProxy coordinator
-          = context.jmxConnectionFactory.connectAny(
-              potentialCoordinators
-                  .stream()
-                  .map(
-                      host ->
-                          Node.builder()
-                              .withCluster(cluster)
-                              .withHostname(host)
-                              .build())
-                  .collect(Collectors.toSet()));
+          = context.clusterProxy.connectAndAllowSidecar(cluster, potentialCoordinators);
 
       if (SEGMENT_RUNNERS.containsKey(segmentId)) {
         LOG.error("SegmentRunner already exists for segment with ID: {}", segmentId);
@@ -247,7 +238,7 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
       String keyspace = repairUnit.getKeyspaceName();
       boolean fullRepair = !repairUnit.getIncrementalRepair();
 
-      LazyInitializer<Set<String>> busyHosts = new BusyHostsInitializer(coordinator);
+      LazyInitializer<Set<String>> busyHosts = new BusyHostsInitializer(cluster);
 
       // If we're using a distributed storage, we need to synchronize with other Reaper instances
       // So we don't start too many segments at the same time
@@ -258,7 +249,7 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
             segment.getRunId());
         return false;
       }
-      if (!canRepair(segment, keyspace, coordinator, busyHosts)) {
+      if (!canRepair(segment, keyspace, coordinator, cluster, busyHosts)) {
         LOG.info(
             "Cannot run segment {} for repair {} at the moment. Will try again later",
             segmentId,
@@ -507,6 +498,7 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
       RepairSegment segment,
       String keyspace,
       JmxProxy coordinator,
+      Cluster cluster,
       LazyInitializer<Set<String>> busyHosts) {
 
     if (repairUnit.getIncrementalRepair()) {
@@ -526,7 +518,7 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
     try {
       // when hosts are coming up or going down, this method can throw an
       //  UndeclaredThrowableException
-      nodes = coordinator.tokenRangeToEndpoint(keyspace, segment.getTokenRange());
+      nodes = context.clusterProxy.tokenRangeToEndpoint(cluster, keyspace, segment.getTokenRange());
     } catch (RuntimeException e) {
       LOG.warn("SegmentRunner couldn't get token ranges from coordinator: ", e);
       String msg = "SegmentRunner couldn't get token ranges from coordinator";
@@ -1287,19 +1279,22 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
 
   private class BusyHostsInitializer extends LazyInitializer<Set<String>> {
 
-    private final JmxProxy coordinator;
+    private final Cluster cluster;
 
-    BusyHostsInitializer(JmxProxy coordinator) {
-      this.coordinator = coordinator;
+    BusyHostsInitializer(Cluster cluster) {
+      this.cluster = cluster;
     }
 
     @Override
     protected Set<String> initialize() {
       Collection<RepairParameters> ongoingRepairs = context.storage.getOngoingRepairsInCluster(clusterName);
       Set<String> busyHosts = Sets.newHashSet();
-      ongoingRepairs.forEach((ongoingRepair) -> {
-        busyHosts.addAll(coordinator.tokenRangeToEndpoint(ongoingRepair.keyspaceName, ongoingRepair.tokenRange));
-      });
+      ongoingRepairs.forEach(
+          (ongoingRepair) -> {
+            busyHosts.addAll(
+                context.clusterProxy.tokenRangeToEndpoint(
+                    cluster, ongoingRepair.keyspaceName, ongoingRepair.tokenRange));
+          });
       return busyHosts;
     }
   }

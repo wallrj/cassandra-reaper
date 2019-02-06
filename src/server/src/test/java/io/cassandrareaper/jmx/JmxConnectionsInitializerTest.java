@@ -63,6 +63,7 @@ public class JmxConnectionsInitializerTest {
     context.config = new ReaperApplicationConfiguration();
     context.config.setDatacenterAvailability(DatacenterAvailability.EACH);
     context.storage = mock(CassandraStorage.class);
+    context.clusterProxy = ClusterProxy.create(context);
 
     Cluster cluster = new Cluster(
             "test",
@@ -101,6 +102,7 @@ public class JmxConnectionsInitializerTest {
     context.config = new ReaperApplicationConfiguration();
     context.config.setDatacenterAvailability(DatacenterAvailability.LOCAL);
     context.storage = mock(CassandraStorage.class);
+    context.clusterProxy = ClusterProxy.create(context);
 
     Cluster cluster = new Cluster(
             "test",

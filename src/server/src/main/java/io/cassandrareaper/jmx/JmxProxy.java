@@ -18,7 +18,6 @@
 package io.cassandrareaper.jmx;
 
 import io.cassandrareaper.ReaperException;
-import io.cassandrareaper.core.Segment;
 import io.cassandrareaper.service.RingRange;
 
 import java.math.BigInteger;
@@ -80,8 +79,6 @@ public interface JmxProxy extends NotificationListener {
 
   Map<List<String>, List<String>> getRangeToEndpointMap(String keyspace) throws ReaperException;
 
-  List<RingRange> getRangesForLocalEndpoint(String keyspace) throws ReaperException;
-
   Set<String> getTableNamesForKeyspace(String keyspace) throws ReaperException;
 
   /**
@@ -99,11 +96,6 @@ public interface JmxProxy extends NotificationListener {
   /** Checks if table exists in the cluster by instantiating a MBean for that table. */
   Map<String, List<String>> listTablesByKeyspace();
 
-  /**
-   * @return all hosts owning a range of tokens
-   */
-  @NotNull
-  List<String> tokenRangeToEndpoint(String keyspace, Segment segment);
 
   /**
    * Triggers a repair of range (beginToken, endToken] for given keyspace and column family. The

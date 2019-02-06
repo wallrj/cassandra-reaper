@@ -24,7 +24,6 @@ import io.cassandrareaper.core.Cluster;
 import io.cassandrareaper.core.Node;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -47,7 +46,6 @@ public class JmxConnectionFactory {
 
   private static final Logger LOG = LoggerFactory.getLogger(JmxConnectionFactory.class);
   private static final ConcurrentMap<String, JmxProxy> JMX_CONNECTIONS = Maps.newConcurrentMap();
-  private static final String LOCALHOST = "127.0.0.1";
   private final MetricRegistry metricRegistry;
   private final HostConnectionCounters hostConnectionCounters;
   private final AppContext context;
@@ -83,9 +81,7 @@ public class JmxConnectionFactory {
 
   protected JmxProxy connectImpl(Node node) throws ReaperException, InterruptedException {
     // use configured jmx port for host if provided
-    String host = context.config.isInSidecarMode()
-        ? LOCALHOST
-        : node.getHostname();
+    String host = node.getHostname();
     if (jmxPorts != null && jmxPorts.containsKey(host) && !host.contains(":")) {
       host = host + ":" + jmxPorts.get(host);
       LOG.debug("Connecting to {} with specific port", host);
@@ -156,20 +152,16 @@ public class JmxConnectionFactory {
   }
 
   public JmxProxy connectAny(Cluster cluster) throws ReaperException {
-    if (context.config.isInSidecarMode()) {
-      return connectAny(Arrays.asList(Node.builder().withCluster(cluster).withHostname(LOCALHOST).build()));
-    } else {
-      Set<Node> nodes = cluster
-              .getSeedHosts()
-              .stream()
-              .map(host -> Node.builder().withCluster(cluster).withHostname(host).build())
-              .collect(Collectors.toSet());
+    Set<Node> nodes = cluster
+            .getSeedHosts()
+            .stream()
+            .map(host -> Node.builder().withCluster(cluster).withHostname(host).build())
+            .collect(Collectors.toSet());
 
-      if (nodes == null || nodes.isEmpty()) {
-        throw new ReaperException("no seeds in cluster with name: " + cluster.getName());
-      }
-      return connectAny(nodes);
+    if (nodes == null || nodes.isEmpty()) {
+      throw new ReaperException("no seeds in cluster with name: " + cluster.getName());
     }
+    return connectAny(nodes);
   }
 
   public final void setJmxAuth(JmxCredentials jmxAuth) {

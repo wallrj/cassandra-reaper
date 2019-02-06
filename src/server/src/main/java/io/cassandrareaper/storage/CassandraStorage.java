@@ -398,7 +398,7 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
     takeLeadPrepStmt = session
         .prepare(
             "INSERT INTO leader(leader_id, reaper_instance_id, reaper_instance_host, last_heartbeat)"
-                + "VALUES(?, ?, ?, " + timeUdf + "(now())) USING TTL ? IF NOT EXISTS");
+                + "VALUES(?, ?, ?, " + timeUdf + "(now())) IF NOT EXISTS USING TTL ?");
     renewLeadPrepStmt = session
         .prepare(
             "UPDATE leader USING TTL ? SET reaper_instance_id = ?, reaper_instance_host = ?,"

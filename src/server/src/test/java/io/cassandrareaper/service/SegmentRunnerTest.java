@@ -29,6 +29,7 @@ import io.cassandrareaper.core.RepairRun;
 import io.cassandrareaper.core.RepairSegment;
 import io.cassandrareaper.core.RepairUnit;
 import io.cassandrareaper.core.Segment;
+import io.cassandrareaper.jmx.ClusterProxy;
 import io.cassandrareaper.jmx.JmxConnectionFactory;
 import io.cassandrareaper.jmx.JmxProxy;
 import io.cassandrareaper.jmx.JmxProxyTest;
@@ -50,7 +51,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import org.apache.cassandra.locator.EndpointSnitchInfoMBean;
 import org.apache.cassandra.repair.RepairParallelism;
@@ -128,8 +128,6 @@ public final class SegmentRunnerTest {
             JmxProxy jmx = JmxProxyTest.mockJmxProxyImpl();
             when(jmx.getClusterName()).thenReturn("reaper");
             when(jmx.isConnectionAlive()).thenReturn(true);
-            when(jmx.tokenRangeToEndpoint(anyString(), any(Segment.class)))
-                .thenReturn(Lists.newArrayList(""));
 
             EndpointSnitchInfoMBean endpointSnitchInfoMBean = mock(EndpointSnitchInfoMBean.class);
             when(endpointSnitchInfoMBean.getDatacenter()).thenReturn("dc1");
@@ -185,6 +183,7 @@ public final class SegmentRunnerTest {
             return jmx;
           }
         };
+    context.clusterProxy = ClusterProxy.create(context);
     RepairRunner rr = mock(RepairRunner.class);
     RepairUnit ru = mock(RepairUnit.class);
     when(ru.getKeyspaceName()).thenReturn("reaper");
@@ -252,7 +251,6 @@ public final class SegmentRunnerTest {
             JmxProxy jmx = JmxProxyTest.mockJmxProxyImpl();
             when(jmx.getClusterName()).thenReturn("reaper");
             when(jmx.isConnectionAlive()).thenReturn(true);
-            when(jmx.tokenRangeToEndpoint(anyString(), any(Segment.class))).thenReturn(Lists.newArrayList(""));
             EndpointSnitchInfoMBean endpointSnitchInfoMBean = mock(EndpointSnitchInfoMBean.class);
             when(endpointSnitchInfoMBean.getDatacenter()).thenReturn("dc1");
             try {
@@ -337,7 +335,7 @@ public final class SegmentRunnerTest {
             return jmx;
           }
         };
-
+    context.clusterProxy = ClusterProxy.create(context);
     RepairRunner rr = mock(RepairRunner.class);
     RepairUnit ru = mock(RepairUnit.class);
     when(ru.getKeyspaceName()).thenReturn("reaper");
@@ -406,8 +404,6 @@ public final class SegmentRunnerTest {
             JmxProxy jmx = JmxProxyTest.mockJmxProxyImpl();
             when(jmx.getClusterName()).thenReturn("reaper");
             when(jmx.isConnectionAlive()).thenReturn(true);
-            when(jmx.tokenRangeToEndpoint(anyString(), any(Segment.class)))
-                .thenReturn(Lists.newArrayList(""));
 
             EndpointSnitchInfoMBean endpointSnitchInfoMBean = mock(EndpointSnitchInfoMBean.class);
             when(endpointSnitchInfoMBean.getDatacenter()).thenReturn("dc1");
@@ -481,7 +477,7 @@ public final class SegmentRunnerTest {
             return jmx;
           }
         };
-
+    context.clusterProxy = ClusterProxy.create(context);
     RepairRunner rr = mock(RepairRunner.class);
     RepairUnit ru = mock(RepairUnit.class);
     when(ru.getKeyspaceName()).thenReturn("reaper");
@@ -554,8 +550,6 @@ public final class SegmentRunnerTest {
             JmxProxy jmx = JmxProxyTest.mockJmxProxyImpl();
             when(jmx.getClusterName()).thenReturn("reaper");
             when(jmx.isConnectionAlive()).thenReturn(true);
-            when(jmx.tokenRangeToEndpoint(anyString(), any(Segment.class)))
-                .thenReturn(Lists.newArrayList(""));
 
             EndpointSnitchInfoMBean endpointSnitchInfoMBean = mock(EndpointSnitchInfoMBean.class);
             when(endpointSnitchInfoMBean.getDatacenter()).thenReturn("dc1");
@@ -624,7 +618,7 @@ public final class SegmentRunnerTest {
             return jmx;
           }
         };
-
+    context.clusterProxy = ClusterProxy.create(context);
     RepairRunner rr = mock(RepairRunner.class);
     RepairUnit ru = mock(RepairUnit.class);
     when(ru.getKeyspaceName()).thenReturn("reaper");
@@ -698,8 +692,6 @@ public final class SegmentRunnerTest {
             JmxProxy jmx = JmxProxyTest.mockJmxProxyImpl();
             when(jmx.getClusterName()).thenReturn("reaper");
             when(jmx.isConnectionAlive()).thenReturn(true);
-            when(jmx.tokenRangeToEndpoint(anyString(), any(Segment.class)))
-                .thenReturn(Lists.newArrayList(""));
 
             EndpointSnitchInfoMBean endpointSnitchInfoMBean = mock(EndpointSnitchInfoMBean.class);
             when(endpointSnitchInfoMBean.getDatacenter()).thenReturn("dc1");
@@ -768,7 +760,7 @@ public final class SegmentRunnerTest {
             return jmx;
           }
         };
-
+    context.clusterProxy = ClusterProxy.create(context);
     RepairRunner rr = mock(RepairRunner.class);
     RepairUnit ru = mock(RepairUnit.class);
     when(ru.getKeyspaceName()).thenReturn("reaper");
@@ -842,8 +834,6 @@ public final class SegmentRunnerTest {
             JmxProxy jmx = JmxProxyTest.mockJmxProxyImpl();
             when(jmx.getClusterName()).thenReturn("reaper");
             when(jmx.isConnectionAlive()).thenReturn(true);
-            when(jmx.tokenRangeToEndpoint(anyString(), any(Segment.class)))
-                .thenReturn(Lists.newArrayList(""));
 
             EndpointSnitchInfoMBean endpointSnitchInfoMBean = mock(EndpointSnitchInfoMBean.class);
             when(endpointSnitchInfoMBean.getDatacenter()).thenReturn("dc1");
@@ -912,7 +902,7 @@ public final class SegmentRunnerTest {
             return jmx;
           }
         };
-
+    context.clusterProxy = ClusterProxy.create(context);
     RepairRunner rr = mock(RepairRunner.class);
     RepairUnit ru = mock(RepairUnit.class);
     when(ru.getKeyspaceName()).thenReturn("reaper");
@@ -987,8 +977,6 @@ public final class SegmentRunnerTest {
             JmxProxy jmx = JmxProxyTest.mockJmxProxyImpl();
             when(jmx.getClusterName()).thenReturn("reaper");
             when(jmx.isConnectionAlive()).thenReturn(true);
-            when(jmx.tokenRangeToEndpoint(anyString(), any(Segment.class)))
-                .thenReturn(Lists.newArrayList(""));
 
             EndpointSnitchInfoMBean endpointSnitchInfoMBean = mock(EndpointSnitchInfoMBean.class);
             when(endpointSnitchInfoMBean.getDatacenter()).thenReturn("dc1");
@@ -1057,7 +1045,7 @@ public final class SegmentRunnerTest {
             return jmx;
           }
         };
-
+    context.clusterProxy = ClusterProxy.create(context);
     RepairRunner rr = mock(RepairRunner.class);
     RepairUnit ru = mock(RepairUnit.class);
     when(ru.getKeyspaceName()).thenReturn("reaper");
