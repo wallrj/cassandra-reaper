@@ -28,6 +28,7 @@ public final class Migration018 {
   private static final Logger LOG = LoggerFactory.getLogger(Migration018.class);
   private static final String METRICS_V1_TABLE = "node_metrics_v1";
   private static final String METRICS_V2_TABLE = "node_metrics_v2";
+  private static final String OPERATIONS_TABLE = "node_operations";
 
   private Migration018() {
   }
@@ -49,15 +50,14 @@ public final class Migration018 {
         || VersionNumber.parse("3.8").compareTo(lowestNodeVersion) <= 0) {
       try {
         if (!isUsingTwcs(session, keyspace)) {
-          LOG.warn("Altering the {} to use TWCS...", METRICS_V1_TABLE);
+          LOG.warn("Altering {} to use TWCS...", METRICS_V1_TABLE);
           session.execute(
                   "ALTER TABLE " + METRICS_V1_TABLE + " WITH compaction = {'class': 'TimeWindowCompactionStrategy', "
                       + "'unchecked_tombstone_compaction': 'true', "
                       + "'compaction_window_size': '2', "
                       + "'compaction_window_unit': 'MINUTES'}");
-        }
-        if (!isUsingTwcs(session, keyspace)) {
-          LOG.warn("Altering the {} to use TWCS...", METRICS_V2_TABLE);
+
+          LOG.warn("Altering {} to use TWCS...", METRICS_V2_TABLE);
           session.execute(
                   "ALTER TABLE " + METRICS_V2_TABLE + " WITH compaction = {'class': 'TimeWindowCompactionStrategy', "
                       + "'unchecked_tombstone_compaction': 'true', "
@@ -65,6 +65,15 @@ public final class Migration018 {
                       + "'compaction_window_unit': 'DAYS'}");
 
           LOG.warn("{} was successfully altered to use TWCS.", METRICS_V2_TABLE);
+
+          LOG.warn("Altering {} to use TWCS...", OPERATIONS_TABLE);
+          session.execute(
+                  "ALTER TABLE " + OPERATIONS_TABLE + " WITH compaction = {'class': 'TimeWindowCompactionStrategy', "
+                      + "'unchecked_tombstone_compaction': 'true', "
+                      + "'compaction_window_size': '1', "
+                      + "'compaction_window_unit': 'DAYS'}");
+
+          LOG.warn("{} was successfully altered to use TWCS.", OPERATIONS_TABLE);
         }
       } catch (RuntimeException e) {
         LOG.error("Failed altering ");

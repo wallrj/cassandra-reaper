@@ -21,6 +21,7 @@ import io.cassandrareaper.AppContext;
 import io.cassandrareaper.ReaperApplicationConfiguration;
 import io.cassandrareaper.ReaperApplicationConfiguration.DatacenterAvailability;
 import io.cassandrareaper.ReaperException;
+import io.cassandrareaper.core.Compaction;
 import io.cassandrareaper.core.GenericMetric;
 import io.cassandrareaper.core.Node;
 import io.cassandrareaper.core.NodeMetrics;
@@ -36,10 +37,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.management.JMException;
+import javax.management.MalformedObjectNameException;
+import javax.management.ReflectionException;
 
 import com.codahale.metrics.Gauge;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import org.slf4j.Logger;
@@ -152,8 +156,10 @@ final class Heart implements AutoCloseable {
           if (context.config.getDatacenterAvailability() == DatacenterAvailability.SIDECAR) {
             // In sidecar mode we store metrics in the db on a regular basis
             grabAndStoreGenericMetrics();
+            grabAndStoreActiveCompactions();
           }
-        } catch (ExecutionException | InterruptedException | RuntimeException | ReaperException | JMException ex) {
+        } catch (ExecutionException | InterruptedException | RuntimeException
+            | ReaperException | JMException | JsonProcessingException ex) {
           LOG.warn("Failed metric collection during heartbeat", ex);
         } finally {
           assert updatingNodeMetrics.get();
@@ -200,46 +206,28 @@ final class Heart implements AutoCloseable {
 
   private void grabAndStoreGenericMetrics()
       throws ReaperException, InterruptedException, JMException {
-    int runningRepairs = 0;
-    int pendingCompactions = 0;
     Node node = Node.builder().withClusterName(context.localClusterName).withHostname(context.localNodeAddress).build();
     List<GenericMetric> metrics
         = this.metricsService.convertToGenericMetrics(this.metricsService.collectMetrics(node), node);
 
     for (GenericMetric metric:metrics) {
       ((IDistributedStorage)context.storage).storeMetric(metric);
-      if (isPendingCompactionsMetric(metric)) {
-        pendingCompactions += metric.getValue();
-      }
-      if (isRepairMetric(metric)) {
-        runningRepairs += metric.getValue();
-      }
     }
     LOG.info("Grabbing and storing metrics for {}", context.localNodeAddress);
 
-    final int totalRunningRepairs = runningRepairs;
-    final int totalPendingCompactions = pendingCompactions;
-    /*
-    context
-        .storage
-        .getRepairRunsWithState(RunState.RUNNING)
-        .stream()
-        .filter(run -> run.getClusterName().equals(context.localClusterName))
-        .forEach(
-            run ->
-                ((IDistributedStorage) context.storage)
-                    .storeNodeMetrics(
-                        run.getId(),
-                        NodeMetrics.builder()
-                            .withCluster(context.localClusterName)
-                            .withHasRepairRunning(totalRunningRepairs > 0)
-                            .withPendingCompactions(totalPendingCompactions)
-                            .withActiveAnticompactions(0)
-                            .withDatacenter(context.localDatacenter)
-                            .withNode(context.localNodeAddress)
-                            .withRequested(false)
-                            .build()));
-                            */
+  }
+
+  private void grabAndStoreActiveCompactions()
+      throws JsonProcessingException, MalformedObjectNameException, ReflectionException,
+          ReaperException, InterruptedException {
+    Node node = Node.builder().withClusterName(context.localClusterName).withHostname(context.localNodeAddress).build();
+    List<Compaction> activeCompactions = context.clusterProxy.listActiveCompactionsDirect(node);
+
+    ((IDistributedStorage) context.storage)
+        .storeCompactions(context.localClusterName, context.localNodeAddress, activeCompactions);
+
+    LOG.info("Grabbing and storing compactions for {}", context.localNodeAddress);
+
   }
 
   @VisibleForTesting

@@ -22,10 +22,8 @@ import io.cassandrareaper.ReaperApplicationConfiguration.JmxCredentials;
 import io.cassandrareaper.core.Cluster;
 import io.cassandrareaper.core.Node;
 import io.cassandrareaper.jmx.ClusterProxy;
-import io.cassandrareaper.jmx.EndpointSnitchInfoProxy;
 import io.cassandrareaper.jmx.JmxConnectionFactory;
 import io.cassandrareaper.jmx.JmxConnectionsInitializer;
-import io.cassandrareaper.jmx.JmxProxy;
 import io.cassandrareaper.resources.ClusterResource;
 import io.cassandrareaper.resources.NodeStatsResource;
 import io.cassandrareaper.resources.PingResource;
@@ -45,8 +43,10 @@ import io.cassandrareaper.storage.IStorage;
 import io.cassandrareaper.storage.MemoryStorage;
 import io.cassandrareaper.storage.PostgresStorage;
 
+import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -71,6 +71,7 @@ import io.dropwizard.setup.Environment;
 import io.prometheus.client.CollectorRegistry;
 import io.prometheus.client.dropwizard.DropwizardExports;
 import io.prometheus.client.exporter.MetricsServlet;
+import jersey.repackaged.com.google.common.collect.Sets;
 import org.eclipse.jetty.server.session.SessionHandler;
 import org.eclipse.jetty.servlets.CrossOriginFilter;
 import org.flywaydb.core.Flyway;
@@ -309,12 +310,19 @@ public final class ReaperApplication extends Application<ReaperApplicationConfig
               .withClusterName("bogus")
               .build();
       try {
-        JmxProxy jmxProxy
-            = context.jmxConnectionFactory.connect(
-                host);
-        context.localNodeAddress = context.config.getEnforcedLocalNode().orElse(jmxProxy.getLocalEndpoint());
-        context.localClusterName = Cluster.toSymbolicName(jmxProxy.getClusterName());
-        context.localDatacenter = EndpointSnitchInfoProxy.create(jmxProxy).getDataCenter(context.localNodeAddress);
+        context.localNodeAddress
+            = context
+                .config
+                .getEnforcedLocalNode()
+                .orElse(context.clusterProxy.getLocalEndpoint(host));
+        context.localClusterName = Cluster.toSymbolicName(context.clusterProxy.getClusterName(host));
+        context.localDatacenter
+            = context.clusterProxy.getDatacenter(
+                new Cluster(
+                    context.localClusterName,
+                    Optional.empty(),
+                    Sets.newHashSet(Arrays.asList(context.localNodeAddress))),
+                context.localNodeAddress);
         LOG.info("Sidecar mode. Local node is : {}", context.localNodeAddress);
       } catch (RuntimeException | InterruptedException | ReaperException e) {
         LOG.error("Failed connecting to the local node in sidecar mode {}", host, e);
@@ -353,7 +361,7 @@ public final class ReaperApplication extends Application<ReaperApplicationConfig
           }
         },
         0,
-        5,
+        10,
         TimeUnit.SECONDS);
   }
 

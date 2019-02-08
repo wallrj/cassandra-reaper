@@ -225,6 +225,9 @@ public class JmxConnectionFactory {
       try {
         JmxProxy proxy = JmxProxyImpl.connect(
                 host, username, password, addressTranslator, connectionTimeout, metricRegistry);
+        if (hostConnectionCounters.getSuccessfulConnections(host) <= 0) {
+          context.accessibleDatacenters.add(EndpointSnitchInfoProxy.create(proxy).getDataCenter());
+        }
         hostConnectionCounters.incrementSuccessfulConnections(host);
         return proxy;
       } catch (ReaperException | InterruptedException ex) {

@@ -112,9 +112,7 @@ public final class SnapshotService {
 
       Preconditions.checkArgument(cluster.isPresent());
 
-      JmxProxy jmxProxy = context.jmxConnectionFactory.connectAny(cluster.get());
-
-      List<String> liveNodes = jmxProxy.getLiveNodes();
+      List<String> liveNodes = context.clusterProxy.getLiveNodes(cluster.get());
       List<Callable<Pair<Node, String>>> snapshotTasks = liveNodes
               .stream()
               .map(host -> Node.builder().withCluster(cluster.get()).withHostname(host).build())
@@ -172,9 +170,7 @@ public final class SnapshotService {
 
       Preconditions.checkArgument(cluster.isPresent());
 
-      JmxProxy jmxProxy = context.jmxConnectionFactory.connectAny(cluster.get());
-
-      List<String> liveNodes = jmxProxy.getLiveNodes();
+      List<String> liveNodes = context.clusterProxy.getLiveNodes(cluster.get());
       List<Callable<List<Snapshot>>> listSnapshotTasks = liveNodes
               .stream()
               .map(host -> Node.builder().withCluster(cluster.get()).withHostname(host).build())
@@ -244,11 +240,7 @@ public final class SnapshotService {
     try {
       Optional<Cluster> cluster = context.storage.getCluster(clusterName);
       Preconditions.checkArgument(cluster.isPresent());
-
-      JmxProxy jmxProxy
-          = context.jmxConnectionFactory.connectAny(cluster.get());
-
-      List<String> liveNodes = jmxProxy.getLiveNodes();
+      List<String> liveNodes = context.clusterProxy.getLiveNodes(cluster.get());
       List<Callable<Node>> clearSnapshotTasks = liveNodes
               .stream()
               .map(host -> Node.builder().withCluster(cluster.get()).withHostname(host).build())

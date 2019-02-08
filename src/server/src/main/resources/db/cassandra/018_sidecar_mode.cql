@@ -14,3 +14,17 @@ CREATE TABLE node_metrics_v2 (
     AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy', 'max_threshold': '32', 'min_threshold': '4', 'unchecked_tombstone_compaction': 'true'}
     AND default_time_to_live = 864000
     AND gc_grace_seconds = 10800;
+
+
+CREATE TABLE node_operations (
+    cluster text, 
+    type text, // compaction, streaming, etc...
+    time_bucket text,
+    host text,
+    ts timestamp,
+    data string, // JSON object
+    PRIMARY KEY ((cluster, type, time_bucket), host, ts)
+) WITH CLUSTERING ORDER BY (host ASC, ts DESC)
+    AND compaction = {'class': 'org.apache.cassandra.db.compaction.SizeTieredCompactionStrategy', 'max_threshold': '32', 'min_threshold': '4', 'unchecked_tombstone_compaction': 'true'}
+    AND default_time_to_live = 864000
+    AND gc_grace_seconds = 10800;

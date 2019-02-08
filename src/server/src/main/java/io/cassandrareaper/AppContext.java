@@ -24,10 +24,12 @@ import io.cassandrareaper.storage.IStorage;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.codahale.metrics.MetricRegistry;
+import com.google.common.collect.Sets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,6 +53,7 @@ public final class AppContext {
   public String localNodeAddress;
   public String localClusterName;
   public String localDatacenter;
+  public Set<String> accessibleDatacenters = Sets.newHashSet();
   public ClusterProxy clusterProxy;
 
   private static String initialiseInstanceAddress() {

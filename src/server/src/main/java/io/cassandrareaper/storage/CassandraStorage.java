@@ -22,6 +22,7 @@ import io.cassandrareaper.ReaperApplicationConfiguration;
 import io.cassandrareaper.ReaperException;
 import io.cassandrareaper.core.Cluster;
 import io.cassandrareaper.core.ClusterProperties;
+import io.cassandrareaper.core.Compaction;
 import io.cassandrareaper.core.GenericMetric;
 import io.cassandrareaper.core.NodeMetrics;
 import io.cassandrareaper.core.RepairRun;
@@ -80,6 +81,7 @@ import com.datastax.driver.core.policies.DowngradingConsistencyRetryPolicy;
 import com.datastax.driver.core.policies.RetryPolicy;
 import com.datastax.driver.core.utils.UUIDs;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
 import com.google.common.cache.CacheBuilder;
@@ -180,6 +182,8 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
   private PreparedStatement storeMetricsPrepStmt;
   private PreparedStatement getMetricsForHostPrepStmt;
   private PreparedStatement getMetricsForClusterPrepStmt;
+  private PreparedStatement insertOperationsPrepStmt;
+  private PreparedStatement listOperationsForNodePrepStmt;
 
   public CassandraStorage(ReaperApplicationConfiguration config, Environment environment) throws ReaperException {
     CassandraFactory cassandraFactory = config.getCassandraFactory();
@@ -386,8 +390,8 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
               ex);
         }
       }
-
       prepareMetricStatements();
+      prepareOperationsStatements();
     } catch (RuntimeException e) {
       LOG.error("Failed preparing Cassandra statements", e);
       throw new ReaperException(e);
@@ -434,6 +438,18 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
                 "SELECT cluster, metric, time_bucket, host, ts, value FROM node_metrics_v2 "
                     + "WHERE metric = ? and cluster = ? and time_bucket = ?")
             .setConsistencyLevel(ConsistencyLevel.LOCAL_ONE);
+  }
+
+  private void prepareOperationsStatements() {
+    insertOperationsPrepStmt
+        = session.prepare(
+            "INSERT INTO node_operations(cluster, type, time_bucket, host, ts, data) "
+                + "values(?,?,?,?,?,?)");
+
+    listOperationsForNodePrepStmt
+        = session.prepare(
+            "SELECT cluster, type, time_bucket, host, ts, data FROM node_operations "
+                + "WHERE cluster = ? AND type = ? and time_bucket = ? and host = ? LIMIT 1");
   }
 
   @Override
@@ -1618,5 +1634,40 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
             metric.getHost(),
             metric.getTs().toDate(),
             metric.getValue()));
+  }
+
+  @Override
+  public void storeCompactions(String clusterName, String host, List<Compaction> activeCompactions)
+      throws JsonProcessingException {
+    session.executeAsync(
+        insertOperationsPrepStmt.bind(
+            clusterName,
+            "compaction",
+            DateTime.now().toString(HOURLY_FORMATTER),
+            host,
+            DateTime.now().toDate(),
+            objectMapper.writeValueAsString(activeCompactions)));
+  }
+
+  @Override
+  public List<Compaction> listCompactions(String clusterName, String host)
+      throws IOException {
+    // cluster = ? AND type = ? and time_bucket = ? and host = ?
+    ResultSet compactions
+        = session.execute(
+            listOperationsForNodePrepStmt.bind(
+                clusterName, "compaction", DateTime.now().toString(HOURLY_FORMATTER), host));
+    return compactions.isExhausted()
+        ? Collections.emptyList()
+        : parseJson(compactions.one().getString("data"), new TypeReference<List<Compaction>>(){});
+  }
+
+  private static <T> T parseJson(String json, TypeReference<T> ref) {
+    try {
+      return new ObjectMapper().readValue(json, ref);
+    } catch (IOException e) {
+      LOG.error("error parsing json", e);
+      throw new RuntimeException(e);
+    }
   }
 }

@@ -22,6 +22,7 @@ import io.cassandrareaper.ReaperException;
 import io.cassandrareaper.core.Cluster;
 import io.cassandrareaper.core.Node;
 import io.cassandrareaper.core.Snapshot;
+import io.cassandrareaper.jmx.ClusterProxy;
 import io.cassandrareaper.jmx.JmxConnectionFactory;
 import io.cassandrareaper.jmx.JmxProxy;
 import io.cassandrareaper.jmx.JmxProxyTest;
@@ -42,6 +43,7 @@ import org.assertj.core.api.Assertions;
 import org.junit.Test;
 import org.mockito.Mockito;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -144,7 +146,6 @@ public final class SnapshotServiceTest {
       throws InterruptedException, ReaperException, ClassNotFoundException, IOException {
 
     JmxProxy proxy = (JmxProxy) mock(Class.forName("io.cassandrareaper.jmx.JmxProxyImpl"));
-    when(proxy.getLiveNodes()).thenReturn(Arrays.asList("127.0.0.1", "127.0.0.2"));
     StorageServiceMBean storageMBean = Mockito.mock(StorageServiceMBean.class);
     JmxProxyTest.mockGetStorageServiceMBean(proxy, storageMBean);
 
@@ -153,7 +154,12 @@ public final class SnapshotServiceTest {
     cxt.jmxConnectionFactory = mock(JmxConnectionFactory.class);
     when(cxt.jmxConnectionFactory.connect(Mockito.any(Node.class))).thenReturn(proxy);
     when(cxt.jmxConnectionFactory.connectAny(Mockito.any(Cluster.class))).thenReturn(proxy);
-
+    ClusterProxy clusterProxy = Mockito.spy(ClusterProxy.create(cxt));
+    Mockito.doReturn(Arrays.asList("127.0.0.1", "127.0.0.2")).when(clusterProxy).getLiveNodes(any());
+    Mockito.doReturn(Arrays.asList("127.0.0.1", "127.0.0.2"))
+        .when(clusterProxy)
+        .getLiveNodes(any(), any());
+    cxt.clusterProxy = clusterProxy;
     cxt.storage = mock(IStorage.class);
     Cluster cluster = new Cluster("testCluster", Optional.of("murmur3"), ImmutableSet.of("127.0.0.1"));
     when(cxt.storage.getCluster(anyString())).thenReturn(Optional.of(cluster));
@@ -170,7 +176,6 @@ public final class SnapshotServiceTest {
       throws InterruptedException, ReaperException, ClassNotFoundException, IOException {
 
     JmxProxy proxy = (JmxProxy) mock(Class.forName("io.cassandrareaper.jmx.JmxProxyImpl"));
-    when(proxy.getLiveNodes()).thenReturn(Arrays.asList("127.0.0.1", "127.0.0.2", "127.0.0.3"));
     StorageServiceMBean storageMBean = Mockito.mock(StorageServiceMBean.class);
     JmxProxyTest.mockGetStorageServiceMBean(proxy, storageMBean);
 
@@ -179,7 +184,13 @@ public final class SnapshotServiceTest {
     cxt.jmxConnectionFactory = mock(JmxConnectionFactory.class);
     when(cxt.jmxConnectionFactory.connect(Mockito.any(Node.class))).thenReturn(proxy);
     when(cxt.jmxConnectionFactory.connectAny(Mockito.any(Cluster.class))).thenReturn(proxy);
+    ClusterProxy clusterProxy = Mockito.spy(ClusterProxy.create(cxt));
+    Mockito.doReturn(Arrays.asList("127.0.0.1", "127.0.0.2", "127.0.0.3")).when(clusterProxy).getLiveNodes(any());
+    Mockito.doReturn(Arrays.asList("127.0.0.1", "127.0.0.2", "127.0.0.3"))
+        .when(clusterProxy)
+        .getLiveNodes(any(), any());
 
+    cxt.clusterProxy = clusterProxy;
     cxt.storage = mock(IStorage.class);
     Cluster cluster = new Cluster("testCluster", Optional.of("murmur3"), ImmutableSet.of("127.0.0.1"));
     when(cxt.storage.getCluster(anyString())).thenReturn(Optional.of(cluster));

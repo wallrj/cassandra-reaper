@@ -17,15 +17,19 @@
 
 package io.cassandrareaper.storage;
 
+import io.cassandrareaper.core.Compaction;
 import io.cassandrareaper.core.GenericMetric;
 import io.cassandrareaper.core.NodeMetrics;
 import io.cassandrareaper.core.RepairSegment;
 import io.cassandrareaper.service.RingRange;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
 
 
 /**
@@ -73,5 +77,11 @@ public interface IDistributedStorage {
   List<GenericMetric> getMetrics(String clusterName, Optional<String> host, String metric, long since);
 
   void storeMetric(GenericMetric metric);
+
+  void storeCompactions(String clusterName, String host, List<Compaction> activeCompactions)
+      throws JsonProcessingException;
+
+  List<Compaction> listCompactions(String clusterName, String host)
+      throws JsonProcessingException, IOException;
 
 }
