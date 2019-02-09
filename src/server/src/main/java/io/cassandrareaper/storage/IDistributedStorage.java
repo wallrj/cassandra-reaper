@@ -74,7 +74,12 @@ public interface IDistributedStorage {
   Optional<RepairSegment> getNextFreeSegmentForRanges(
       UUID runId, Optional<RingRange> parallelRange, List<RingRange> ranges);
 
-  List<GenericMetric> getMetrics(String clusterName, Optional<String> host, String metric, long since);
+  List<GenericMetric> getMetrics(
+      String clusterName,
+      Optional<String> host,
+      String metricDomain,
+      String metricType,
+      long since);
 
   void storeMetric(GenericMetric metric);
 

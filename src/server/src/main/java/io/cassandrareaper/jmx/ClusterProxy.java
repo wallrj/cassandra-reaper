@@ -22,8 +22,13 @@ import io.cassandrareaper.ReaperApplicationConfiguration.DatacenterAvailability;
 import io.cassandrareaper.ReaperException;
 import io.cassandrareaper.core.Cluster;
 import io.cassandrareaper.core.Compaction;
+import io.cassandrareaper.core.DroppedMessages;
+import io.cassandrareaper.core.GenericMetric;
+import io.cassandrareaper.core.JmxStat;
+import io.cassandrareaper.core.MetricsHistogram;
 import io.cassandrareaper.core.Node;
 import io.cassandrareaper.core.Segment;
+import io.cassandrareaper.core.ThreadPoolStat;
 import io.cassandrareaper.resources.view.NodesStatus;
 import io.cassandrareaper.service.RingRange;
 import io.cassandrareaper.storage.IDistributedStorage;
@@ -35,14 +40,19 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import javax.management.JMException;
 import javax.management.MalformedObjectNameException;
 import javax.management.ReflectionException;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Lists;
 import jersey.repackaged.com.google.common.base.Preconditions;
+import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -483,4 +493,155 @@ public final class ClusterProxy {
         || (DatacenterAvailability.SIDECAR == context.config.getDatacenterAvailability()
             && node.equals(context.localNodeAddress));
   }
+
+  /**
+   * Collect a set of metrics through JMX on a specific node.
+   *
+   * @param node the node to collect metrics on
+   * @param collectedMetrics the list of metrics to collect
+   * @return the list of collected metrics
+   * @throws ReaperException any runtime exception we catch in the process
+   */
+  public Map<String, List<JmxStat>> collectMetrics(Node node, String[] collectedMetrics) throws ReaperException {
+    try {
+      JmxProxy jmxProxy = connectNode(node);
+      MetricsProxy proxy = MetricsProxy.create(jmxProxy);
+      return proxy.collectMetrics(collectedMetrics);
+    } catch (JMException | InterruptedException | IOException e) {
+      LOG.error("Failed collecting metrics for host {}", node, e);
+      throw new ReaperException(e);
+    }
+  }
+
+  /**
+   * Collect ClientRequest metrics through JMX on a specific node.
+   *
+   * @param node the node to collect metrics on
+   * @param collectedMetrics the list of metrics to collect
+   * @return the list of collected metrics
+   * @throws ReaperException any runtime exception we catch in the process
+   */
+  public List<MetricsHistogram> getClientRequestLatencies(Node node) throws ReaperException {
+    try {
+      String nodeDc = getDatacenter(node);
+      if (nodeIsAccessibleThroughJmx(nodeDc, node.getHostname())) {
+        MetricsProxy metricsProxy = MetricsProxy.create(connectNode(node));
+        return convertToMetricsHistogram(
+            MetricsProxy.convertToGenericMetrics(metricsProxy.collectLatencyMetrics(), node));
+      } else {
+        return convertToMetricsHistogram(((IDistributedStorage)context.storage)
+            .getMetrics(
+                node.getCluster().getName(),
+                Optional.of(node.getHostname()),
+                "org.apache.cassandra.metrics",
+                "ClientRequest",
+                DateTime.now().minusMinutes(1).getMillis()));
+      }
+    } catch (JMException | InterruptedException | IOException e) {
+      LOG.error("Failed collecting tpstats for host {}", node, e);
+      throw new ReaperException(e);
+    }
+  }
+
+  public List<DroppedMessages> getDroppedMessages(Node node) throws ReaperException {
+    try {
+      String nodeDc = getDatacenter(node);
+      if (nodeIsAccessibleThroughJmx(nodeDc, node.getHostname())) {
+        MetricsProxy proxy = MetricsProxy.create(connectNode(node));
+        return convertToDroppedMessages(MetricsProxy.convertToGenericMetrics(proxy.collectDroppedMessages(), node));
+      } else {
+        return convertToDroppedMessages(((IDistributedStorage)context.storage)
+            .getMetrics(
+                node.getCluster().getName(),
+                Optional.of(node.getHostname()),
+                "org.apache.cassandra.metrics",
+                "DroppedMessage",
+                DateTime.now().minusMinutes(1).getMillis()));
+      }
+    } catch (JMException | InterruptedException | IOException e) {
+      LOG.error("Failed collecting tpstats for host {}", node, e);
+      throw new ReaperException(e);
+    }
+  }
+
+  @VisibleForTesting
+  public List<DroppedMessages> convertToDroppedMessages(List<GenericMetric> metrics) {
+    List<DroppedMessages> droppedMessages = Lists.newArrayList();
+    Map<String, List<GenericMetric>> metricsByScope
+        = metrics.stream().collect(Collectors.groupingBy(GenericMetric::getMetricScope));
+    for (Entry<String, List<GenericMetric>> pool : metricsByScope.entrySet()) {
+      DroppedMessages.Builder builder = DroppedMessages.builder().withName(pool.getKey());
+      for (GenericMetric stat : pool.getValue()) {
+        builder = MetricsProxy.updateGenericMetricAttribute(stat, builder);
+      }
+      droppedMessages.add(builder.build());
+    }
+    return droppedMessages;
+  }
+
+  public List<ThreadPoolStat> getTpStats(Node node) throws ReaperException {
+    try {
+      String nodeDc = getDatacenter(node);
+      if (nodeIsAccessibleThroughJmx(nodeDc, node.getHostname())) {
+        MetricsProxy proxy = MetricsProxy.create(connectNode(node));
+        return convertToThreadPoolStats(MetricsProxy.convertToGenericMetrics(proxy.collectTpStats(), node));
+      } else {
+        return convertToThreadPoolStats(((IDistributedStorage)context.storage)
+            .getMetrics(
+                node.getCluster().getName(),
+                Optional.of(node.getHostname()),
+                "org.apache.cassandra.metrics",
+                "ThreadPools",
+                DateTime.now().minusMinutes(1).getMillis()));
+      }
+    } catch (JMException | InterruptedException | IOException e) {
+      LOG.error("Failed collecting tpstats for host {}", node, e);
+      throw new ReaperException(e);
+    }
+  }
+
+  @VisibleForTesting
+  public List<ThreadPoolStat> convertToThreadPoolStats(List<GenericMetric> metrics) {
+    List<ThreadPoolStat> tpstats = Lists.newArrayList();
+    Map<String, List<GenericMetric>> metricsByScope
+        = metrics.stream().collect(Collectors.groupingBy(GenericMetric::getMetricScope));
+    for (Entry<String, List<GenericMetric>> pool : metricsByScope.entrySet()) {
+      ThreadPoolStat.Builder builder = ThreadPoolStat.builder().withName(pool.getKey());
+      for (GenericMetric stat : pool.getValue()) {
+        builder = MetricsProxy.updateGenericMetricAttribute(stat, builder);
+      }
+      tpstats.add(builder.build());
+    }
+    return tpstats;
+  }
+
+  @VisibleForTesting
+  public List<MetricsHistogram> convertToMetricsHistogram(List<GenericMetric> metrics) {
+    List<MetricsHistogram> histograms = Lists.newArrayList();
+    // We have several metric types that we need to process separately
+    // We'll group on MetricsHistogram::getType in order to generate one histogram per type
+    Map<String, List<GenericMetric>> metricsByScope
+        = metrics.stream().collect(Collectors.groupingBy(GenericMetric::getMetricScope));
+
+    for (Entry<String, List<GenericMetric>> metricByScope : metricsByScope.entrySet()) {
+      Map<String, List<GenericMetric>> metricsByName
+          = metricByScope
+              .getValue()
+              .stream()
+              .collect(Collectors.groupingBy(GenericMetric::getMetricName));
+      for (Entry<String, List<GenericMetric>> metricByName : metricsByName.entrySet()) {
+        MetricsHistogram.Builder builder
+            = MetricsHistogram.builder()
+                .withName(metricByScope.getKey())
+                .withType(metricByName.getKey());
+        for (GenericMetric stat : metricByName.getValue()) {
+          builder = MetricsProxy.updateGenericMetricAttribute(stat, builder);
+        }
+        histograms.add(builder.build());
+      }
+    }
+    return histograms;
+  }
+
+
 }

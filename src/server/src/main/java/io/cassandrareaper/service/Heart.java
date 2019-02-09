@@ -227,22 +227,7 @@ final class Heart implements AutoCloseable {
         .storeCompactions(context.localClusterName, context.localNodeAddress, activeCompactions);
 
     LOG.info("Grabbing and storing compactions for {}", context.localNodeAddress);
-
   }
-
-  @VisibleForTesting
-  boolean isRepairMetric(GenericMetric metric) {
-    return metric.getMetric().equals("org.apache.cassandra.internal:type=AntiEntropySessions,name=PendingTasks.Value")
-        || metric.getMetric().equals("org.apache.cassandra.internal:type=AntiEntropySessions,name=ActiveCount.Value")
-        || metric.getMetric().matches("org.apache.cassandra.metrics:type=ThreadPools,path=internal,"
-            + "scope=Repair#[0-9]{1,3},name=[a-zA-Z]*Tasks.Value");
-  }
-
-  @VisibleForTesting
-  boolean isPendingCompactionsMetric(GenericMetric metric) {
-    return metric.getMetric().equals("org.apache.cassandra.metrics:type=Compaction,name=PendingTasks.Value");
-  }
-
 
   private static Timer.Context timer(AppContext context, String... names) {
     return context.metricRegistry.timer(MetricRegistry.name(Heart.class, names)).time();

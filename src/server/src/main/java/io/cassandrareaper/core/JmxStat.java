@@ -23,6 +23,8 @@ import com.fasterxml.jackson.databind.annotation.JsonPOJOBuilder;
 @JsonDeserialize(builder = JmxStat.Builder.class)
 public final class JmxStat {
   private final String mbeanName;
+  private final String domain;
+  private final String type;
   private final String scope;
   private final String name;
   private final String attribute;
@@ -30,6 +32,8 @@ public final class JmxStat {
 
   private JmxStat(Builder builder) {
     this.mbeanName = builder.mbeanName;
+    this.domain = builder.domain;
+    this.type = builder.type;
     this.scope = builder.scope;
     this.name = builder.name;
     this.attribute = builder.attribute;
@@ -38,6 +42,14 @@ public final class JmxStat {
 
   public String getMbeanName() {
     return mbeanName;
+  }
+
+  public String getDomain() {
+    return domain;
+  }
+
+  public String getType() {
+    return type;
   }
 
   public String getScope() {
@@ -69,6 +81,8 @@ public final class JmxStat {
   @JsonPOJOBuilder(buildMethodName = "build", withPrefix = "with")
   public static final class Builder {
     private String mbeanName;
+    private String domain;
+    private String type;
     private String scope;
     private String name;
     private String attribute;
@@ -78,6 +92,16 @@ public final class JmxStat {
 
     public Builder withMbeanName(String mbeanName) {
       this.mbeanName = mbeanName;
+      return this;
+    }
+
+    public Builder withDomain(String domain) {
+      this.domain = domain;
+      return this;
+    }
+
+    public Builder withType(String type) {
+      this.type = type;
       return this;
     }
 

@@ -22,14 +22,22 @@ import org.joda.time.DateTime;
 public final class GenericMetric {
 
   private final String clusterName;
-  private final String metric;
+  private final String metricDomain;
+  private final String metricType;
+  private final String metricScope;
+  private final String metricName;
+  private final String metricAttribute;
   private final String host;
   private final DateTime ts;
   private final double value;
 
   private GenericMetric(Builder builder) {
     this.clusterName = builder.clusterName;
-    this.metric = builder.metric;
+    this.metricDomain = builder.metricDomain;
+    this.metricType = builder.metricType;
+    this.metricScope = builder.metricScope;
+    this.metricName = builder.metricName;
+    this.metricAttribute = builder.metricAttribute;
     this.host = builder.host;
     this.ts = builder.ts;
     this.value = builder.value;
@@ -39,8 +47,28 @@ public final class GenericMetric {
     return clusterName;
   }
 
-  public String getMetric() {
-    return metric;
+  public String getMetricDomain() {
+    return metricDomain;
+  }
+
+  public String getMetricType() {
+    return metricType;
+  }
+
+  public String getMetricScope() {
+    return metricScope;
+  }
+
+  public String getMetricName() {
+    return metricName;
+  }
+
+  public String getMetricAttribute() {
+    return metricAttribute;
+  }
+
+  public String getMetricFullId() {
+    return metricDomain + ":type=" + metricType + ",scope=" + metricScope + ",name=" + metricName;
   }
 
   public String getHost() {
@@ -61,7 +89,11 @@ public final class GenericMetric {
 
   public static final class Builder {
     private String clusterName;
-    private String metric;
+    private String metricDomain;
+    private String metricType;
+    private String metricScope;
+    private String metricName;
+    private String metricAttribute;
     private String host;
     private DateTime ts;
     private double value;
@@ -73,8 +105,28 @@ public final class GenericMetric {
       return this;
     }
 
-    public Builder withMetric(String metric) {
-      this.metric = metric;
+    public Builder withMetricDomain(String metricDomain) {
+      this.metricDomain = metricDomain;
+      return this;
+    }
+
+    public Builder withMetricType(String metricType) {
+      this.metricType = metricType;
+      return this;
+    }
+
+    public Builder withMetricScope(String metricScope) {
+      this.metricScope = metricScope == null ? " " : metricScope;
+      return this;
+    }
+
+    public Builder withMetricName(String metricName) {
+      this.metricName = metricName;
+      return this;
+    }
+
+    public Builder withMetricAttribute(String metricAttribute) {
+      this.metricAttribute = metricAttribute;
       return this;
     }
 

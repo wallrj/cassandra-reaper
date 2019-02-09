@@ -423,20 +423,28 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
         + " WHERE time_partition = ? AND run_id = ? AND node = ?");
     delNodeMetricsByNodePrepStmt = session.prepare("DELETE FROM node_metrics_v1"
         + " WHERE time_partition = ? AND run_id = ? AND node = ?");
-    storeMetricsPrepStmt = session
+    storeMetricsPrepStmt
+        = session
             .prepare(
-                "INSERT INTO node_metrics_v2 (cluster, metric, time_bucket, host, ts, value) "
-                    + "VALUES(?, ?, ?, ?, ?, ?)")
+                "INSERT INTO node_metrics_v2 (cluster, metric_domain, metric_type, time_bucket, "
+                    + "host, metric_scope, metric_name, ts, metric_attribute, value) "
+                    + "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
             .setConsistencyLevel(ConsistencyLevel.LOCAL_ONE);
-    getMetricsForHostPrepStmt = session
+    getMetricsForHostPrepStmt
+        = session
             .prepare(
-                "SELECT cluster, metric, time_bucket, host, ts, value FROM node_metrics_v2 "
-                    + "WHERE metric = ? and cluster = ? and time_bucket = ? and host = ? and ts >= ? and ts <= ?")
+                "SELECT cluster, metric_domain, metric_type, time_bucket, host, "
+                    + "metric_scope, metric_name, ts, metric_attribute, value "
+                    + "FROM node_metrics_v2 "
+                    + "WHERE metric_domain = ? and metric_type = ? and cluster = ? and time_bucket = ? and host = ?")
             .setConsistencyLevel(ConsistencyLevel.LOCAL_ONE);
-    getMetricsForClusterPrepStmt = session
+    getMetricsForClusterPrepStmt
+      = session
             .prepare(
-                "SELECT cluster, metric, time_bucket, host, ts, value FROM node_metrics_v2 "
-                    + "WHERE metric = ? and cluster = ? and time_bucket = ?")
+                "SELECT cluster, metric_domain, metric_type, time_bucket, host, "
+                    + "metric_scope, metric_name, ts, metric_attribute, value "
+                    + "FROM node_metrics_v2 "
+                    + "WHERE metric_domain = ? and metric_type = ? and cluster = ? and time_bucket = ?")
             .setConsistencyLevel(ConsistencyLevel.LOCAL_ONE);
   }
 
@@ -1575,10 +1583,15 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
   }
 
   @Override
-  public List<GenericMetric> getMetrics(String clusterName, Optional<String> host, String metric, long since) {
-    List<GenericMetric> metrics = Collections.emptyList();
-    List<ResultSetFuture> futures = Collections.emptyList();
-    List<String> timeBuckets = Collections.emptyList();
+  public List<GenericMetric> getMetrics(
+      String clusterName,
+      Optional<String> host,
+      String metricDomain,
+      String metricType,
+      long since) {
+    List<GenericMetric> metrics = Lists.newArrayList();
+    List<ResultSetFuture> futures = Lists.newArrayList();
+    List<String> timeBuckets = Lists.newArrayList();
     long now = DateTime.now().getMillis();
     long startTime = since;
 
@@ -1593,14 +1606,16 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
         //metric = ? and cluster = ? and time_bucket = ? and host = ? and ts >= ? and ts <= ?
         futures.add(session.executeAsync(
             getMetricsForHostPrepStmt.bind(
-                metric,
+                metricDomain,
+                metricType,
                 clusterName,
                 timeBucket,
-                host.get(),
-                since,
-                DateTime.now().getMillis())));
+                host.get())));
       } else {
-        futures.add(session.executeAsync(getMetricsForClusterPrepStmt.bind(metric, clusterName, timeBucket)));
+        futures.add(
+            session.executeAsync(
+                getMetricsForClusterPrepStmt.bind(
+                    metricDomain, metricType, clusterName, timeBucket)));
       }
     }
 
@@ -1612,7 +1627,10 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
               GenericMetric.builder()
                   .withClusterName(row.getString("cluster"))
                   .withHost(row.getString("host"))
-                  .withMetric(row.getString("metric"))
+                  .withMetricType(row.getString("metric_type"))
+                  .withMetricScope(row.getString("metric_scope"))
+                  .withMetricName(row.getString("metric_name"))
+                  .withMetricAttribute(row.getString("metric_attribute"))
                   .withTs(new DateTime(row.getTimestamp("ts")))
                   .withValue(row.getDouble("value"))
                   .build());
@@ -1626,13 +1644,17 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
 
   @Override
   public void storeMetric(GenericMetric metric) {
-    session.executeAsync(
+    session.execute(
         storeMetricsPrepStmt.bind(
             metric.getClusterName(),
-            metric.getMetric(),
+            metric.getMetricDomain(),
+            metric.getMetricType(),
             metric.getTs().toString(HOURLY_FORMATTER),
             metric.getHost(),
+            metric.getMetricScope(),
+            metric.getMetricName(),
             metric.getTs().toDate(),
+            metric.getMetricAttribute(),
             metric.getValue()));
   }
 
