@@ -573,7 +573,7 @@ public final class ClusterFacade {
             .contains(context.config.getDatacenterAvailability())
             && context.jmxConnectionFactory.getAccessibleDatacenters().contains(nodeDc))
         || (DatacenterAvailability.SIDECAR == context.config.getDatacenterAvailability()
-            && node.equals(context.localNodeAddress));
+            && node.equals(context.getLocalNodeAddress()));
   }
 
   /**
