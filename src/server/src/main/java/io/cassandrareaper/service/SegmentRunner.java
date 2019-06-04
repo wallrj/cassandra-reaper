@@ -92,6 +92,7 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
   private static final ExecutorService METRICS_GRABBER_EXECUTOR = Executors.newFixedThreadPool(10);
   private static final long METRICS_POLL_INTERVAL_MS = TimeUnit.SECONDS.toMillis(5);
   private static final long METRICS_MAX_WAIT_MS = TimeUnit.MINUTES.toMillis(2);
+  private static final UUID GLOBAL_LOCK_ID = UUID.fromString("35446a30-86ed-11e9-bc42-526af7764f64");
 
   private final AppContext context;
   private final UUID segmentId;
@@ -1165,7 +1166,7 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
         = context.metricRegistry.timer(MetricRegistry.name(SegmentRunner.class, "lockSegmentRunners")).time()) {
 
       boolean result = context.storage instanceof IDistributedStorage
-          ? ((IDistributedStorage) context.storage).takeLead(repairRunner.getRepairRunId(), LOCK_DURATION)
+          ? ((IDistributedStorage) context.storage).takeLead(GLOBAL_LOCK_ID, LOCK_DURATION)
           : true;
 
       if (!result) {
@@ -1184,7 +1185,7 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
         = context.metricRegistry.timer(MetricRegistry.name(SegmentRunner.class, "renewLockSegmentRunners")).time()) {
 
       boolean result = context.storage instanceof IDistributedStorage
-          ? ((IDistributedStorage) context.storage).renewLead(repairRunner.getRepairRunId(), LOCK_DURATION)
+          ? ((IDistributedStorage) context.storage).renewLead(GLOBAL_LOCK_ID, LOCK_DURATION)
           : true;
 
       if (!result) {
@@ -1202,7 +1203,7 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
       try (Timer.Context cx
           = context.metricRegistry.timer(MetricRegistry.name(SegmentRunner.class, "releaseSegmentRunners")).time()) {
         if (context.storage instanceof IDistributedStorage) {
-          ((IDistributedStorage) context.storage).releaseLead(repairRunner.getRepairRunId());
+          ((IDistributedStorage) context.storage).releaseLead(GLOBAL_LOCK_ID);
         }
       }
     }
