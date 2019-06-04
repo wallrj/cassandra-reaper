@@ -39,7 +39,7 @@ import io.cassandrareaper.service.RepairParameters;
 import io.cassandrareaper.service.RingRange;
 import io.cassandrareaper.storage.cassandra.DateTimeCodec;
 import io.cassandrareaper.storage.cassandra.Migration016;
-import io.cassandrareaper.storage.cassandra.Migration020;
+import io.cassandrareaper.storage.cassandra.Migration021;
 
 import java.io.IOException;
 import java.math.BigInteger;
@@ -97,6 +97,8 @@ import org.cognitor.cassandra.migration.Database;
 import org.cognitor.cassandra.migration.MigrationRepository;
 import org.cognitor.cassandra.migration.MigrationTask;
 import org.joda.time.DateTime;
+import org.joda.time.format.DateTimeFormat;
+import org.joda.time.format.DateTimeFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import systems.composable.dropwizard.cassandra.CassandraFactory;
@@ -114,6 +116,7 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
   private static final String SELECT_REPAIR_UNIT = "SELECT * FROM repair_unit_v1";
   private static final String SELECT_LEADERS = "SELECT * FROM leader";
   private static final String SELECT_RUNNING_REAPERS = "SELECT reaper_instance_id FROM running_reapers";
+  private static final DateTimeFormatter HOURLY_FORMATTER = DateTimeFormat.forPattern("yyyyMMddHH");
 
   private static final Logger LOG = LoggerFactory.getLogger(CassandraStorage.class);
 
@@ -251,7 +254,7 @@ public final class CassandraStorage implements IStorage, IDistributedStorage {
         // some migration steps depend on the Cassandra version, so must be rerun every startup
         Migration016.migrate(session, keyspace);
         // Switch metrics table to TWCS if possible, this is intentionally executed every startup
-        Migration020.migrate(session, keyspace);
+        Migration021.migrate(session, keyspace);
       } else {
         LOG.info(
             String.format("Keyspace %s already at schema version %d", session.getLoggedKeyspace(), currentVersion));

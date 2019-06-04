@@ -23,14 +23,14 @@ import com.datastax.driver.core.VersionNumber;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public final class Migration020 {
+public final class Migration021 {
 
-  private static final Logger LOG = LoggerFactory.getLogger(Migration020.class);
+  private static final Logger LOG = LoggerFactory.getLogger(Migration021.class);
   private static final String METRICS_V1_TABLE = "node_metrics_v1";
   private static final String METRICS_V2_TABLE = "node_metrics_v2";
   private static final String OPERATIONS_TABLE = "node_operations";
 
-  private Migration020() {
+  private Migration021() {
   }
 
   /**
