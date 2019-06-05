@@ -92,7 +92,6 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
   private static final ExecutorService METRICS_GRABBER_EXECUTOR = Executors.newFixedThreadPool(10);
   private static final long METRICS_POLL_INTERVAL_MS = TimeUnit.SECONDS.toMillis(5);
   private static final long METRICS_MAX_WAIT_MS = TimeUnit.MINUTES.toMillis(2);
-  private static final UUID GLOBAL_LOCK_ID = UUID.fromString("35446a30-86ed-11e9-bc42-526af7764f64");
 
   private final AppContext context;
   private final UUID segmentId;
@@ -111,6 +110,7 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
   private final AtomicBoolean completeNotified = new AtomicBoolean(false);
   private final ClusterFacade clusterFacade;
   private final Set<String> tablesToRepair;
+  private final AtomicBoolean releasedSegmentRunner = new AtomicBoolean(false);
 
 
   private SegmentRunner(
@@ -343,6 +343,7 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
                     repairUnit.getRepairThreadCount());
 
             if (0 != repairNo) {
+              releaseSegmentRunners();
               processTriggeredSegment(segment, coordinator, repairNo);
             } else {
               LOG.info("Nothing to repair for segment {} in keyspace {}", segmentId, keyspace);
@@ -610,7 +611,6 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
           // delete the metrics to force other instances to get a refreshed value
           storage.deleteNodeMetrics(repairRunner.getRepairRunId(), node);
         }
-        renewLockSegmentRunners();
       }
     }
     return result;
@@ -1158,15 +1158,17 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
   }
 
   private boolean lockSegmentRunners() {
-    if (this.repairUnit.getIncrementalRepair()) {
+    if (this.repairUnit.getIncrementalRepair() || !context.config.getDatacenterAvailability().isInCollocatedMode()) {
       return true;
     }
-
+    UUID lockId = com.datastax.driver.core.utils.UUIDs.startOf(repairUnit.getClusterName().hashCode());
     try (Timer.Context cx
         = context.metricRegistry.timer(MetricRegistry.name(SegmentRunner.class, "lockSegmentRunners")).time()) {
 
       boolean result = context.storage instanceof IDistributedStorage
-          ? ((IDistributedStorage) context.storage).takeLead(GLOBAL_LOCK_ID, LOCK_DURATION)
+          ? ((IDistributedStorage) context.storage).takeLead(
+              lockId,
+              LOCK_DURATION)
           : true;
 
       if (!result) {
@@ -1176,34 +1178,15 @@ final class SegmentRunner implements RepairStatusHandler, Runnable {
     }
   }
 
-  private boolean renewLockSegmentRunners() {
-    if (this.repairUnit.getIncrementalRepair()) {
-      return true;
-    }
-
-    try (Timer.Context cx
-        = context.metricRegistry.timer(MetricRegistry.name(SegmentRunner.class, "renewLockSegmentRunners")).time()) {
-
-      boolean result = context.storage instanceof IDistributedStorage
-          ? ((IDistributedStorage) context.storage).renewLead(GLOBAL_LOCK_ID, LOCK_DURATION)
-          : true;
-
-      if (!result) {
-        context
-            .metricRegistry
-            .counter(MetricRegistry.name(SegmentRunner.class, "renewLockSegmentRunners", "failed"))
-            .inc();
-      }
-      return result;
-    }
-  }
-
   private void releaseSegmentRunners() {
-    if (!this.repairUnit.getIncrementalRepair()) {
+    if (!this.repairUnit.getIncrementalRepair()
+        && releasedSegmentRunner.compareAndSet(false, true)
+        && context.config.getDatacenterAvailability().isInCollocatedMode()) {
+      UUID uuid = com.datastax.driver.core.utils.UUIDs.startOf(repairUnit.getClusterName().hashCode());
       try (Timer.Context cx
           = context.metricRegistry.timer(MetricRegistry.name(SegmentRunner.class, "releaseSegmentRunners")).time()) {
         if (context.storage instanceof IDistributedStorage) {
-          ((IDistributedStorage) context.storage).releaseLead(GLOBAL_LOCK_ID);
+          ((IDistributedStorage) context.storage).releaseLead(uuid);
         }
       }
     }
